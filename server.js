@@ -5,46 +5,96 @@ const express = require('express');
 const superagent = require('superagent');
 const cors = require('cors');
 const PORT = process.env.PORT || 3000;
+const pg = require('pg');
 
 const app = express();
 
 // get project enviroment variables
 require('dotenv').config();
 
+app.get('/location', getLocation);
+app.get('/weather', getWeather);
+app.get('/yelp', getBusiness);
+
 // app middleware
 app.use(cors());
 
+// ===========================DATABASE CONFIG====================================
+const client = new pg.Client(process.env.DATABASE_URL)
+client.connect();
+client.on('err', err => console.log(err));
+
 // ===========================Location api=======================================
-app.get('/location', (req, res) => {
-  searchToLatLong(req.query.data)
-    .then(location => res.send(location))
-    .catch(error => handleError(error, res));
+function getLocation(req, res) {
+  const locationHandler = {
+    query: req.query.data,
+    cacheHit: (results) => {
+      console.log('got data from SQL');
+      res.send(results.rows[0]);
+    },
+    cacheMiss: () => {
+    Location.fetchLocation(req.query.data)
+      .then(data => res.send(data));
+  },
+};
+Location.lookUpLocation(locationHandler);
+}
+
+function Location(query, data) {
+  this.seatch_query = query;
+  this.formatted_query = data.formatted_address;
+  this.latitude = data.geometry.location.lat;
+  this.longitude = data.geometry.location.lng;
+}
+
+Location.prototype.save = function() {
+  let SQL = `
+  INSERT INTO locations
+    (search_query,formatted_query,latitude,longitude) 
+    VALUES($1,$2,$3,$4) 
+    RETURNING id
+`;
+let values = Object.values(this);
+return client.query(SQL, values)
+}
+
+Location.fetchLocation = (query) => {
+  const _URL = `https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${process.env.GEOCODE_API_KEY}`;
+return superagent.get(_URL)
+.then(data => {
+  console.log('got data from API');
+  if (! data.body.results.length) { throw 'NO DATA';}
+  else {
+    let location = new Location(query, data.body.results[0]);
+    return location.save()
+      .then( results => {
+        location.id = results.rows[0].id
+        return location;
+      })
+      return location;
+  }
 });
+};
 
-function Location(query, res) {
-  this.latitude = res.body.results[0].geometry.location.lat;
-  this.longitude = res.body.results[0].geometry.location.lng;
-  this.formatted_query = res.body.results[0].formatted_address;
-  this.search_query = query;
+Location.lookUpLocation = (handler) => {
+  const SQL = `SELECT * FROM locations WHERE search_query=$1`;
+  const values = [handler.query];
+  return client.query(SQL, values)
+  .then(results => {
+    if(results.rowCount > 0) {
+      handler.cacheHit(results);
+    } else {
+      handler.cacheMiss();
+    }
+  })
+  .catch(console.error);
 }
-
-function searchToLatLong(query) {
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${process.env.GEOCODE_API_KEY}`;
-
-  return superagent.get(url)
-    .then(res => {
-      return new Location(query, res);
-    })
-    .catch(error => handleError(error));
-}
-
 // ==============================Weather Api==========================================
 function Weather(day) {
   this.forecast = day.summary;
   this.time = new Date(day.time * 1000).toDateString();
 }
 
-app.get('/weather', getWeather);
 
 function getWeather(req, res) {
   const url = `https://api.darksky.net/forecast/${process.env.WEATHER_API_KEY}/${req.query.data.latitude},${req.query.data.longitude}`;
@@ -67,7 +117,6 @@ function Yelp(businesses) {
   this.url = businesses.url;
 }
 
-app.get('/yelp', getBusiness);
 
 function getBusiness(req, res) {
   superagent.get(`https://api.yelp.com/v3/businesses/search?location=${req.query.data.search_query}/${req.query.data.latitude},${req.query.data.longitude}`)
@@ -84,13 +133,10 @@ function getBusiness(req, res) {
 // =============================Movie API==============================================
 function Movie(movie) {
   this.title = movie.title;
-  this.creation_date = movie.creation_date;
   this.overview = movie.overview;
-  this.average_votes = movie.average_votes;
   this.total_votes = movie.total_votes;
   this.image_url = 'https://image.tmdb.org/t/p/w370_and_h556_bestv2/' + movie.poster_path;
   this.popularity = movie.popularity;
-  this.release_on = movie.release_on;
 }
 
 app.get('/movies', getMovie);
@@ -113,11 +159,10 @@ function handleError(err, res) {
   if (res) res.satus(500).send('Sorry, something broke');
 }
 
-// **************a test route that gives you turtle tim.*****************
-// app.get('/testroute', function (req, res) {
-//     let animal = { type: 'turtle', name: 'tim' };
-//     res.json(animal);
-// });
+
+// pull from cahche or make request
+
+
 
 app.listen(PORT, () => {
   console.log(`listening on ${PORT}`);
