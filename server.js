@@ -13,8 +13,8 @@ const app = express();
 require('dotenv').config();
 
 app.get('/location', getLocation);
-app.get('/weather', getWeather);
-app.get('/yelp', getBusiness);
+// app.get('/weather', getWeather);
+// app.get('/yelp', getBusiness);
 
 // app middleware
 app.use(cors());
@@ -28,14 +28,17 @@ client.on('err', err => console.log(err));
 function getLocation(req, res) {
   const locationHandler = {
     query: req.query.data,
-    cacheHit: (results) => {
+    cacheHit: (result) => {
       console.log('got data from SQL');
-      res.send(results.rows[0]);
+      res.send(result.rows[0]);
     },
     cacheMiss: () => {
     Location.fetchLocation(req.query.data)
-      .then(data => res.send(data));
-  },
+      .then((data) => {
+        console.log('data is', data);
+        res.send(data);
+      })
+      },
 };
 Location.lookUpLocation(locationHandler);
 }
@@ -55,7 +58,7 @@ Location.prototype.save = function() {
     RETURNING id;
     `;
 let values = Object.values(this);
-console.log(values);
+console.log("save function", values);
 return client.query(SQL, values);
 
 }
@@ -67,13 +70,16 @@ return superagent.get(_URL)
   console.log('got data from API');
   if (! data.body.results.length) { throw 'NO DATA';}
   else {
+    console.log("inside of else in fetchLocation", data.body);
     let location = new Location(query, data.body.results[0]);
     return location.save()
-      .then( results => {
-        location.id = results.rows[0].id
+      .then( result => {
+        console.log("location.id", result.rows[0]);
+        console.log("location", location);
+        location.id = result.rows[0].id
         return location;
       })
-      .catch(error => handleError(error));
+      return location;
   }
 });
 };
