@@ -52,10 +52,12 @@ Location.prototype.save = function() {
   INSERT INTO locations
     (search_query,formatted_query,latitude,longitude) 
     VALUES($1,$2,$3,$4) 
-    RETURNING id
-`;
+    RETURNING id;
+    `;
 let values = Object.values(this);
-return client.query(SQL, values)
+console.log(values);
+return client.query(SQL, values);
+
 }
 
 Location.fetchLocation = (query) => {
@@ -71,7 +73,7 @@ return superagent.get(_URL)
         location.id = results.rows[0].id
         return location;
       })
-      return location;
+      .catch(error => handleError(error));
   }
 });
 };
