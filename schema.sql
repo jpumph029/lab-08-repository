@@ -1,11 +1,11 @@
 DROP TABLE IF EXISTS locations, weathers, yelp, moviedb;
 
 CREATE TABLE locations (
-id SERIAL PRIMARY KEY,
-search_query VARCHAR(255),
-formatted_query VARCHAR(255),
-latitude NUMERIC,
-longitude NUMERIC
+  id SERIAL PRIMARY KEY,
+  search_query VARCHAR(255),
+  formatted_query VARCHAR(255),
+  latitude NUMERIC(8, 6),
+  longitude NUMERIC(9, 6)
 );
 
 CREATE TABLE weathers (
